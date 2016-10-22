@@ -1,0 +1,45 @@
+package:
+  name: miles
+  version: "VERSION"
+
+source:
+  git_url: git@github.com:clsb/miles.git
+  git_rev: master
+
+build:
+  noarch: True
+  entry_points:
+    - miles=miles.cli:main
+
+requirements:
+  build:
+    - python >=3.5
+    - setuptools
+    - scipy
+    - numpy
+    - mpi4py
+    - networkx
+
+  run:
+    - python >=3.5
+    - scipy
+    - numpy
+    - mpi4py
+    - networkx
+    - sqlite
+    - matplotlib
+    - seaborn
+    - argcomplete
+
+test:
+  imports:
+    - miles
+
+  commands:
+    - miles --help
+
+about:
+  home: https://github.com/clsb/miles
+  license: MIT
+  license_file: LICENSE
+  summary: Milestoning tool

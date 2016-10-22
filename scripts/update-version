@@ -1,0 +1,3 @@
+#!/bin/sh
+
+shtool version --language python --name miles --set 0.0.1 milestoning/version.py

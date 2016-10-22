@@ -1,0 +1,6 @@
+#+TITLE: Miles
+
+This is an automatic tool for running milestoning / iterative milestoning
+simulations.
+
+Sphinx-based API documentation can be found in the doc directory.

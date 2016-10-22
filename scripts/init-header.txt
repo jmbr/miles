@@ -1,0 +1,8 @@
+"""Milestoning simulation module.
+
+.. moduleauthor:: Juan M. Bello-Rivas <jmbr@superadditive.com>
+
+"""
+
+# flake8: noqa
+

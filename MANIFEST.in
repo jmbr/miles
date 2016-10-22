@@ -1,0 +1,7 @@
+include setup.py
+
+include miles/*.py
+include tests/*.py
+
+include LICENSE
+include README.org

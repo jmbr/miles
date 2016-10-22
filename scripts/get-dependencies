@@ -1,0 +1,229 @@
+#!/usr/bin/env python
+
+'''This program keeps track of the interdependencies between modules
+and outputs a sorted sequence of module imports guaranteed to avoid
+missing dependencies. This sequence of imports is suitable for use in
+__init__.py.'''
+
+
+import _ast
+import ast
+import glob
+import networkx
+import os
+import sys
+from typing import List, Dict, Set
+
+
+# Modules to be excluded from inspection.
+EXCLUDED = ['__init__.py']
+
+
+def get_dependencies(package_name: str, sources: List[str]) \
+        -> Dict[str, Set[str]]:
+    '''Map modules to the modules they depend on.
+
+    Parameters
+    ----------
+    package_name : str
+        Name of the package containing the modules.
+
+    sources : List[str]
+        List of source code files for the modules to be inspected.
+
+    Returns
+    -------
+    depends : Dict[str, Set[str]]
+        Correspondence between each module and the modules defining
+        required symbols.
+
+    '''
+    requires = get_requirements(package_name, sources)
+    provides = get_providers(sources)
+
+    depends = {}
+
+    for module, symbols in requires.items():
+        try:
+            depends[module] = set([provides[symbol] for symbol in symbols])
+        except:
+            print('Unable to obtain provider for on the symbols in {!r} '
+                  'required by the module {!r}.'.format(symbols, module))
+            raise
+
+    return depends
+
+
+def get_requirements(package_name: str,
+                     sources: List[str]) -> Dict[str, List[str]]:
+    '''Associate modules with symbols that they import from elsewhere.
+
+    Parameters
+    ----------
+    package_name : str
+        Name of the package containing the modules.
+
+    sources : List[str]
+        List of source code files for the modules to be inspected.
+
+    Returns
+    -------
+    requires : Dict[str, List[str]]
+        Mapping establishing correspondences between module names and
+        symbols imported from other modules.
+
+    '''
+    requires = {}
+
+    for source in sources:
+        with open(source, 'r') as f:
+            lines = [line.strip() for line in f.readlines()
+                     if 'import' in line]
+
+        for line in lines:
+            tree = ast.parse(line, source)
+
+            if len(tree.body) == 0:
+                continue
+
+            import_statement = tree.body[0]
+
+            if not isinstance(import_statement, _ast.ImportFrom):
+                continue
+
+            if import_statement.module != package_name:
+                continue
+            else:
+                aliases = import_statement.names
+                module_name = os.path.basename(source)[:-3]
+                requires[module_name] = [alias.name for alias in aliases]
+                break
+
+    return requires
+
+
+def get_providers(sources: List[str]) -> Dict[str, List[str]]:
+    '''Associate a symbols with the module where it is defined.
+
+    Parameters
+    ----------
+    sources : List[str]
+        List of source code files for the modules to be inspected.
+
+    Returns
+    -------
+    provider : Dict[str, List[str]]
+        Mapping establishing correspondences between symbol names and
+        the modules where they are defined.
+
+    '''
+    provides = {'version': 'version'}
+
+    for source in sources:
+        with open(source, 'r') as f:
+            lines = [line.strip() for line in f.readlines()
+                     if '__all__' in line]
+
+        for line in lines:
+            tree = ast.parse(line, source)
+
+            if len(tree.body) == 0:
+                continue
+
+            assign_statement = tree.body[0]
+
+            if not isinstance(assign_statement, _ast.Assign):
+                continue
+
+            if assign_statement.targets[0].id != '__all__':
+                continue
+
+            if not isinstance(assign_statement.value, _ast.List):
+                continue
+
+            module_name = os.path.basename(source)[:-3]
+
+            for symbol in [elt.s for elt in assign_statement.value.elts]:
+                provides[symbol] = module_name
+
+    return provides
+
+
+def get_sorted_modules(modules: List[str],
+                       depends: Dict[str, Set[str]]) -> List[str]:
+    '''Returns topologically sorted dependencies.
+
+    Parameters
+    ----------
+    modules : List[str]
+        List of all the modules.
+
+    depends : Dict[str, Set[str]]
+        Correspondence between each module and the modules defining
+        required symbols.
+
+    Returns
+    -------
+    all_modules : List[str]
+        List of module names resulting from a topological sort of the
+        dependency graph. Those modules that do not have dependencies
+        appear in alphabetical order at the end.
+
+    '''
+    graph = networkx.DiGraph()
+    for x, ys in depends.items():
+        for y in ys:
+            graph.add_edge(y, x)
+
+    sorted_modules = networkx.topological_sort(graph)
+
+    remaining_modules = set(modules) - set(sorted_modules)
+
+    all_modules = sorted_modules + list(sorted(remaining_modules))
+
+    return all_modules
+
+
+def print_imports(modules: List[str]):
+    '''Output "from import" statements to stdout.
+
+    Parameters
+    ----------
+    modules: List[str]
+        List of modules to import.
+
+    '''
+    print('#' * 77)
+    print('# Import statements auto-generated by {}'
+          .format(os.path.basename(sys.argv[0])))
+    print('#' * 77)
+
+    for module in modules:
+        print('from .{} import *'.format(module))
+
+
+def main():
+    if len(sys.argv) < 2:
+        print('Usage:', sys.argv[0], 'DIRECTORY',
+              file=sys.stderr)
+        sys.exit(-1)
+
+    directory = sys.argv[1]
+    package_name = os.path.basename(directory)
+
+    pattern = os.path.join(directory, '*.py')
+    sources = [s for s in glob.glob(pattern)
+               if os.path.basename(s) not in EXCLUDED]
+
+    depends = get_dependencies(package_name, sources)
+
+    modules = [os.path.basename(source)[:-3] for source in sources]
+    all_modules = get_sorted_modules(modules, depends)
+
+    # import pprint
+    # pprint.pprint(depends)
+    print_imports(all_modules)
+
+
+if __name__ == '__main__':
+    main()
